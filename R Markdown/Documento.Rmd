@@ -1,34 +1,176 @@
 ---
-title: "documento"
-author: "Giovanny Sandoval Paucar"
+title: "SVAR-IH Model"
+author: "Gio"
 date: '2023-07-09'
-output:
-  html_document:
-    df_print: paged
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+## Modelo de SVAR-IH
+Se elabora un modelo Vector autoregresivo estructural con identificación de heterocedasticidad.
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+El conjunto de datos consiste de 3 variables macroeconómicas de la economía de Estados Unidos: output gap (x), inflation (pi) and interest rates (i).
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+##Instalación de librerías
+```{r pressure, include=FALSE}
+install.packages("vars")
+install.packages("svars")
+install.packages("ggfortify")
+install.packages("Hmisc")
+install.packages("gmodels")
+install.packages("ggthemes")
+install.packages("dplyr")
+install.packages("GGally")
+install.packages("corrplot")
+install.packages("PerformanceAnalytics")
 ```
 
-## Including Plots
+##cargue de Librerías
+```{r include=FALSE}
+library("svars")
+library("ggplot2")
+library("ggfortify")
+library("Hmisc")
+library(gmodels)
+library(ggthemes)
+library(dplyr)
+library(GGally)
+library(corrplot)
+library(PerformanceAnalytics)
+```
 
-You can also embed plots, for example:
+##Análisis Explolatorio de datos
+Estadísticos descriptivos
+```{r}
+summary(USA)
+```
+Histogramas de la inflación
+```{r}
+histograma <- ggplot(USA, aes(x=pi)) +
+  ggtitle("Histograma de la inflación") +
+  theme_fivethirtyeight() +
+  geom_histogram(color="#28324a", fill="#3c78d8")
+histograma
+```
+Histograma de la output gap
+```{r}
+histograma <- ggplot(USA, aes(x=x)) +
+  ggtitle("Histograma de la output gap") +
+  theme_fivethirtyeight() +
+  geom_histogram(color="#28324a", fill="#3c78d8")
+histograma
+```
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+Histograma de la tasa de interés
+
+```{r}
+histograma <- ggplot(USA, aes(x= i)) +
+  ggtitle("Histograma de la tasa de interés") +
+  theme_fivethirtyeight() +
+  geom_histogram(color="#28324a", fill="#3c78d8")
+histograma
+```
+
+Matriz de Correlación
+```{r}
+rcorr(as.matrix(USA))
+```
+Ver la matriz de forma gráfica
+
+```{r}
+correlacion<-round(cor(USA), 1)
+
+corrplot(correlacion, method="number", type="upper")
+```
+
+Gráfica alternativa de matriz de correlación
+
+```{r}
+M<-cor(USA)
+head(round(M,2))
+cor_5 <- rcorr(as.matrix(USA))
+p_mat <- cor_5$P
+
+corrplot(M, method = "circle")
+
+corrplot(M, type = "upper", order = "hclust", 
+         p.mat = p_mat, sig.level = 0.05, insig = "blank")
+
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(M, method = "color", col = col(200),  
+         type = "upper", order = "hclust", 
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col = "darkblue", tl.srt = 45, #Text label color and rotation
+         # Combine with significance level
+         p.mat = p_mat, sig.level = 0.01,  
+         # hide correlation coefficient on the principal diagonal
+         diag = FALSE 
+         )
+```
+
+
+gráficos de dispersión
+
+```{r}
+chart.Correlation(USA, histogram = F, pch = 19)
+```
+Draw scatter plots
+
+```{r}
+chart.Correlation(USA, histogram = TRUE, pch = 19)
+```
+Graficas multiples de las series
+
+```{r}
+autoplot(USA, facet = TRUE) + theme_bw()
+```
+##Estimación del modelo
+```{r}
+reduced.form <- vars::VAR(USA, lag.max = 10, ic = "AIC" )
+structural.form <- id.ngml(reduced.form)
+summary(structural.form)
+```
+Forma estructural de los coeficientes
+```{r}
+structural.form$B <- structural.form$B[,c(3,2,1)]
+structural.form$B[,3] <- structural.form$B[,3]*(-1)
+```
+##Inferencia
+
+impulse response functions
+```{r}
+impulse.response <- irf(structural.form, n.ahead = 30)
+plot(impulse.response, scales = 'free_y')
+```
+
+calculate confidence bands via bootstrap procedures
+
+```{r}
+cores <- parallel::detectCores() - 1
+boot.svar <- wild.boot(structural.form, n.ahead = 30, nboot = 500, nc = cores)
+
+
+plot(boot.svar)
+```
+forecast error variance decomposition
+
+```{r}
+fevd <- fevd(structural.form, n.ahead = 30)
+plot(fevd)
+```
+The historical decomposition
+```{r}
+hist.decomp <- hd(structural.form, series = 1)
+plot(hist.decomp)
+```
+analyze counter factuals
+
+```{r}
+counterfactuals <- cf(structural.form, series = 1)
+plot(counterfactuals)
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
-
-
